@@ -5,7 +5,7 @@ import streamlit as st
 # =========================
 # Config
 # =========================
-API_BASE = "http://localhost:8000"
+API_BASE = "https://biagent-820l.onrender.com"
 
 # =========================== Utilities ===========================
 
