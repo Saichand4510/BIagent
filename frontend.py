@@ -1,11 +1,11 @@
 import uuid
 import requests
 import streamlit as st
-
+import json
 # =========================
 # Config
 # =========================
-API_BASE = "https://biagent-820l.onrender.com"
+API_BASE = "http://127.0.0.1:8000"
 
 # =========================== Utilities ===========================
 
@@ -28,16 +28,16 @@ def load_conversation_api(thread_id):
 
 
 def stream_chat_api(thread_id, user_input):
-    """Stream assistant tokens from FastAPI"""
     with requests.post(
         f"{API_BASE}/chat/stream",
         json={"thread_id": thread_id, "message": user_input},
         stream=True,
     ) as r:
         r.raise_for_status()
-        for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
-            if chunk:
-                yield chunk
+
+        for line in r.iter_lines(decode_unicode=True):
+            if line:
+                yield json.loads(line)
 
 
 def reset_chat():
@@ -90,23 +90,52 @@ for message in st.session_state["message_history"]:
 user_input = st.chat_input("Type here")
 
 # ============================ Chat ============================
-
 if user_input:
-    # show user message
+    # Save user message
     st.session_state["message_history"].append(
         {"role": "user", "content": user_input}
     )
 
     with st.chat_message("user"):
-        st.text(user_input)
+        st.markdown(user_input)
 
-    # assistant streaming
     with st.chat_message("assistant"):
-        ai_message = st.write_stream(
-            stream_chat_api(st.session_state["thread_id"], user_input)
-        )
 
-    # save assistant response
-    st.session_state["message_history"].append(
-        {"role": "assistant", "content": ai_message}
-    )
+     status_holder = {"box": None}
+
+     def stream_with_trace():
+
+        for event in stream_chat_api(
+            st.session_state["thread_id"], user_input
+        ):
+
+            # 🔧 Tool started
+            if event["type"] == "tool_start":
+                tool_name = event["name"]
+
+                if status_holder["box"] is None:
+                    status_holder["box"] = st.status(
+                        f"🔧 Using `{tool_name}` …",
+                        expanded=True
+                    )
+                else:
+                    status_holder["box"].update(
+                        label=f"🔧 Using `{tool_name}` …",
+                        state="running",
+                        expanded=True
+                    )
+
+            # ✅ Tool finished
+            elif event["type"] == "tool_end":
+                if status_holder["box"]:
+                    status_holder["box"].update(
+                        label="✅ Tool finished",
+                        state="complete",
+                        expanded=False
+                    )
+
+            # 🤖 Assistant token
+            elif event["type"] == "assistant":
+                yield event["content"]
+
+     ai_message = st.write_stream(stream_with_trace())
