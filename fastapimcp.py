@@ -114,23 +114,50 @@ async def get_thread_messages(thread_id: str):
 # 4️⃣ Chat (STREAMING) ⭐⭐⭐
 # =========================
 
+import json
+from langchain_core.messages import HumanMessage
+
+
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
     CONFIG = get_config(request.thread_id)
 
     async def event_generator():
         try:
-            async for message_chunk, metadata in chatbot.astream(
+            async for event in chatbot.astream_events(
                 {"messages": [HumanMessage(content=request.message)]},
                 config=CONFIG,
-                stream_mode="messages",
             ):
-                # stream ONLY assistant tokens
-                if isinstance(message_chunk, AIMessage):
-                    yield message_chunk.content
+
+                event_type = event["event"]
+
+                # 🔧 Tool started
+                if event_type == "on_tool_start":
+                    yield json.dumps({
+                        "type": "tool_start",
+                        "name": event["name"]
+                    }) + "\n"
+
+                # ✅ Tool finished
+                elif event_type == "on_tool_end":
+                    yield json.dumps({
+                        "type": "tool_end"
+                    }) + "\n"
+
+                # 🤖 Assistant token streaming
+                elif event_type == "on_chat_model_stream":
+                    chunk = event["data"]["chunk"]
+                    if chunk.content:
+                        yield json.dumps({
+                            "type": "assistant",
+                            "content": chunk.content
+                        }) + "\n"
 
         except Exception as e:
-            yield f"\n[ERROR]: {str(e)}"
+            yield json.dumps({
+                "type": "assistant",
+                "content": f"\n[ERROR]: {str(e)}"
+            }) + "\n"
 
     return StreamingResponse(
         event_generator(),
