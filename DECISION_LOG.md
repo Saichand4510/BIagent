@@ -158,7 +158,6 @@ If extended beyond prototype:
 - Cross-board impact analysis
 - Better data quality reporting
 - Redis-based memory
-- Streaming responses
 - Observability (OpenTelemetry)
 
 ---
